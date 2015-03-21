@@ -7,6 +7,7 @@ use Term::ReadKey;
 use Term::ANSIColor qw(colored);
 use File::Slurp qw(read_file);
 use Time::HiRes qw(usleep);
+use Selenium::Remote::Driver;
 
 our $VERSION = 0.004;
 
@@ -21,6 +22,8 @@ sub new {
         delay  => 25_000,
         @_,
     };
+
+    $self->{driver} ||= Selenium::Remote::Driver->new();
 
     return bless $self, $class;
 }
@@ -53,6 +56,9 @@ sub run {
         $self->do_cmd($cmd) and next CMD
             if $cmd =~ s/^!!!//;
 
+        $self->web_cmd($cmd) and next CMD
+            if $cmd =~ s/^www//;
+
         print sprintf $self->{prompt}, $i;
 
         my @steps = split /%%%/, $cmd;
@@ -65,6 +71,9 @@ sub run {
             next CMD       if $key eq 's';
             redo CMD       if $key eq 'r';
             $i--, redo CMD if $key eq 'p';
+
+            $self->web_cmd('go_back')    if $key eq 'b';
+            $self->web_cmd('go_forward') if $key eq 'f';
 
             $step .= ' ' if not @steps;
             my @chars = split '', $step;
@@ -106,6 +115,35 @@ sub do_cmd {
     # Wait for signal that command has ended
     until ($cmd_is_finished) {}
     $cmd_is_finished = 0;
+
+    return 1;
+}
+
+#-----------------------------------------------------------------------------
+
+sub web_cmd {
+    my ($self, $cmd) = @_;
+
+    my ($method, $args) = split ' ', $cmd, 2;
+
+    my %driver_allowed_methods = map { $_ => 1 } qw (
+        status
+        get_alert_text
+        accept_alert
+        dismiss_alert
+        navigate
+        get
+        go_back
+        go_forward
+        refresh
+        execute_script
+        capture_screenshot
+    );
+
+    if (exists $driver_allowed_methods{$method}) {
+        my $return = $self->{driver}->$method($args);
+        print "$return\n" if defined $return;
+    }
 
     return 1;
 }
